@@ -10,25 +10,6 @@ import yaml
 import requests
 import paho.mqtt.client as mqtt
 
-if os.path.exists('/data/options.json'):
-    print('Running in hass.io add-on mode')
-    fp = open('/data/options.json', 'r')
-    config = json.load(fp)
-    fp.close()
-elif os.path.exists('/config/mediola2mqtt.yaml'):
-    print('Running in legacy add-on mode')
-    fp = open('/config/mediola2mqtt.yaml', 'r')
-    config = yaml.safe_load(fp)
-    fp.close()
-elif os.path.exists('mediola2mqtt.yaml'):
-    print('Running in local mode')
-    fp = open('mediola2mqtt.yaml', 'r')
-    config = yaml.safe_load(fp)
-    fp.close()
-else:
-    print('Configuration file not found, exiting.')
-    sys.exit(1)
-
 # Define MQTT event callbacks
 def on_connect(client, userdata, flags, rc):
     connect_statuses = {
@@ -101,6 +82,25 @@ def on_subscribe(client, obj, mid, granted_qos):
 
 def on_log(client, obj, level, string):
     print(string)
+
+config_files = [
+#        ['/data/options.json', 'Running in hass.io add-on mode'],
+        ['/config/mediola2mqtt.yaml', 'Running in legacy add-on mode'],
+        ['mediola2mqtt.yaml', 'Running in local mode'],
+    ]
+config = None
+
+for config_file, comment in config_files:
+    if not os.path.isfile(config_file):
+        continue
+    print(comment)
+    with open('/data/options.json', 'r') as fp:
+        config = json.load(fp)
+    break
+
+if not config:
+    print('Configuration file not found, exiting.')
+    sys.exit(1)
 
 # Setup MQTT connection
 mqttc = mqtt.Client()
