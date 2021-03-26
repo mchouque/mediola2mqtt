@@ -2,14 +2,13 @@
 # (c) 2021 Andreas Böhler
 # License: Apache 2.0
 
-
-import paho.mqtt.client as mqtt
+import os
+import sys
 import socket
 import json
 import yaml
-import os
-import sys
 import requests
+import paho.mqtt.client as mqtt
 
 if os.path.exists('/data/options.json'):
     print('Running in hass.io add-on mode')
@@ -56,40 +55,43 @@ def on_message(client, obj, msg):
     adr = adr[:adr.find("/")]
     print(dtype)
     print(adr)
-    for ii in range(0, len(config['blinds'])):
-        if dtype == config['blinds'][ii]['type'] and adr == config['blinds'][ii]['adr']:
-            if msg.payload == b'open':
-              if dtype == 'RT':
+    for blind in config['blinds']:
+        if dtype != blind['type'] or adr != blind['adr']:
+            continue
+
+        if msg.payload == b'open':
+            if dtype == 'RT':
                 data = "20" + adr
-              elif dtype == 'ER':
+            elif dtype == 'ER':
                 data = adr + "01"
-              else:
-                return
-            elif msg.payload == b'close':
-              if dtype == 'RT':
-                data = "40" + adr
-              elif dtype == 'ER':
-                data = adr + "00"
-              else:
-                return
-            elif msg.payload == b'stop':
-              if dtype == 'RT':
-                data = "10" + adr
-              elif dtype == 'ER':
-                data = adr + "02"
-              else:
-                return
             else:
-              print("Wrong command")
-              return
-            payload = {
-              "XC_FNC" : "SendSC",
-              "type" : dtype,
-              "data" : data
-            }
-            url = 'http://' + config['mediola']['host'] + '/command'
-            response = requests.get(url, params=payload, headers={'Connection':'close'})
-            print(response)
+                return
+        elif msg.payload == b'close':
+            if dtype == 'RT':
+                data = "40" + adr
+            elif dtype == 'ER':
+                data = adr + "00"
+            else:
+                return
+        elif msg.payload == b'stop':
+            if dtype == 'RT':
+                data = "10" + adr
+            elif dtype == 'ER':
+                data = adr + "02"
+            else:
+                return
+        else:
+            print("Wrong command")
+            return
+
+        payload = {
+          "XC_FNC" : "SendSC",
+          "type" : dtype,
+          "data" : data
+        }
+        url = 'http://' + config['mediola']['host'] + '/command'
+        response = requests.get(url, params=payload, headers={'Connection':'close'})
+        print(response)
 
 def on_publish(client, obj, mid):
     print("Pub: " + str(mid))
@@ -110,7 +112,7 @@ mqttc.on_message = on_message
 
 if config['mqtt']['debug']:
     print("Debugging messages enabled")
-    mqttc.on_log = on_log    
+    mqttc.on_log = on_log
     mqttc.on_publish = on_publish
 
 if config['mqtt']['username'] and config['mqtt']['password']:
@@ -123,26 +125,28 @@ except:
 mqttc.loop_start()
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-sock.bind(('',config['mediola']['udp_port']))
+sock.bind(('', config['mediola']['udp_port']))
 
 # Set up discovery structure
 
 if 'buttons' in config:
     # Buttons are configured as MQTT device triggers
-    for ii in range(0, len(config['buttons'])):
-        identifier = config['buttons'][ii]['type'] + '_' + config['buttons'][ii]['adr']
+    for button in config['buttons']:
+        identifier = button['type'] + '_' + button['adr']
         dtopic = config['mqtt']['discovery_prefix'] + '/device_automation/' + \
                  identifier + '/config'
         topic = config['mqtt']['topic'] + '/buttons/' + identifier
-        name = "Mediola Button"
-        if 'name' in config['buttons'][ii]['type']:
-            name = config['buttons'][ii]['name']
+        if 'name' in button['type']:
+            name = button['name']
+        else:
+            name = "Mediola Button"
 
         payload = {
           "automation_type" : "trigger",
           "topic" : topic,
           "type" : "button_short_press",
           "subtype" : "button_1",
+          "name" : name,
           "device" : {
             "identifiers" : identifier,
             "manufacturer" : "Mediola",
@@ -153,14 +157,15 @@ if 'buttons' in config:
         mqttc.publish(dtopic, payload=payload, retain=True)
 
 if 'blinds' in config:
-    for ii in range(0, len(config['blinds'])):
-        identifier = config['blinds'][ii]['type'] + '_' + config['blinds'][ii]['adr']
+    for blind in config['blinds']:
+        identifier = blind['type'] + '_' + blind['adr']
         dtopic = config['mqtt']['discovery_prefix'] + '/cover/' + \
                  identifier + '/config'
         topic = config['mqtt']['topic'] + '/blinds/' + identifier
-        name = "Mediola Blind"
-        if 'name' in config['blinds'][ii]:
-            name = config['blinds'][ii]['name']
+        if 'name' in blind:
+            name = blind['name']
+        else:
+            name = "Mediola Blind"
 
         payload = {
           "command_topic" : topic + "/set",
@@ -177,7 +182,7 @@ if 'blinds' in config:
             "name" : "Mediola Blind",
           },
         }
-        if config['blinds'][ii]['type'] == 'ER':
+        if blind['type'] == 'ER':
             payload["state_topic"] = topic + "/state"
         payload = json.dumps(payload)
         mqttc.subscribe(topic + "/set")
@@ -188,29 +193,41 @@ while True:
     if config['mqtt']['debug']:
         print('Received message: %s' % data)
         mqttc.publish(config['mqtt']['topic'], payload=data, retain=False)
-    if data.startswith(b'{XC_EVT}'):
-        data = data.replace(b'{XC_EVT}', b'')
-        data_dict = json.loads(data)
-        for ii in range(0, len(config['buttons'])):
-            if data_dict['type'] == config['buttons'][ii]['type']:
-                if data_dict['data'][0:-2].lower() == config['buttons'][ii]['adr'].lower():
-                    identifier = config['buttons'][ii]['type'] + '_' + config['buttons'][ii]['adr']
-                    topic = config['mqtt']['topic'] + '/buttons/' + identifier
-                    payload = data_dict['data'][-2:]
-                    mqttc.publish(topic, payload=payload, retain=False)
-        for ii in range(0, len(config['blinds'])):
-            if data_dict['type'] == 'ER' and data_dict['type'] == config['blinds'][ii]['type']:
-                if data_dict['data'][0:2].lower() == config['blinds'][ii]['adr'].lower():
-                    identifier = config['blinds'][ii]['type'] + '_' + config['blinds'][ii]['adr']
-                    topic = config['mqtt']['topic'] + '/blinds/' + identifier + '/state'
-                    state = data_dict['data'][-2:].lower()
-                    payload = 'unknown'
-                    if state == '01' or state == '0e':
-                        payload = 'open'
-                    elif state == '02' or state == '0f':
-                        payload = 'closed'
-                    elif state == '08' or state == '0a':
-                        payload = 'opening'
-                    elif state == '09' or state == '0b':
-                        payload = 'closing'
-                    mqttc.publish(topic, payload=payload, retain=True)
+
+    if not data.startswith(b'{XC_EVT}'):
+        continue
+
+    data = data.replace(b'{XC_EVT}', b'')
+    data_dict = json.loads(data)
+    for button in config['buttons']:
+        if data_dict['type'] != button['type']:
+            continue
+
+        if data_dict['data'][0:-2].lower() != button['adr'].lower():
+            continue
+
+        identifier = button['type'] + '_' + button['adr']
+        topic = config['mqtt']['topic'] + '/buttons/' + identifier
+        payload = data_dict['data'][-2:]
+        mqttc.publish(topic, payload=payload, retain=False)
+
+    for blind in config['blinds']:
+        if data_dict['type'] != 'ER' or data_dict['type'] != blind['type']:
+            continue
+
+        if data_dict['data'][0:2].lower() != blind['adr'].lower():
+            continue
+
+        identifier = blind['type'] + '_' + blind['adr']
+        topic = config['mqtt']['topic'] + '/blinds/' + identifier + '/state'
+        state = data_dict['data'][-2:].lower()
+        payload = 'unknown'
+        if state in ['01', '0e']:
+            payload = 'open'
+        elif state in ['02', '0f']:
+            payload = 'closed'
+        elif state in ['08', '0a']:
+            payload = 'opening'
+        elif state in ['09', '0b']:
+            payload = 'closing'
+        mqttc.publish(topic, payload=payload, retain=True)
