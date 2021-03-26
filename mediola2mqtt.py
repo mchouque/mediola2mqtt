@@ -83,6 +83,67 @@ def on_subscribe(client, obj, mid, granted_qos):
 def on_log(client, obj, level, string):
     print(string)
 
+def publish_button(button, sub_identifier=None, sub_name=None):
+    identifier = button['type'] + '_' + button['adr']
+    if sub_identifier:
+        identifier += '-' + sub_identifier
+    dtopic = config['mqtt']['disCovery_prefix'] + '/device_automation/' + \
+             identifier + '/config'
+    topic = config['mqtt']['topic'] + '/buttons/' + identifier
+    if 'name' in button['type']:
+        name = button['name']
+    else:
+        name = "Mediola Button"
+    if sub_name:
+        name += ' ' + sub_name
+
+    payload = {
+      "automation_type" : "trigger",
+      "topic" : topic,
+      "type" : "button_short_press",
+      "subtype" : "button_1",
+      "name" : name,
+      "device" : {
+        "identifiers" : identifier,
+        "manufacturer" : "Mediola",
+        "name" : "Mediola Button",
+      },
+    }
+    payload = json.dumps(payload)
+    mqttc.publish(dtopic, payload=payload, retain=True)
+
+def publish_blind(blind):
+    identifier = blind['type'] + '_' + blind['adr']
+    dtopic = config['mqtt']['discovery_prefix'] + '/cover/' + \
+             identifier + '/config'
+    topic = config['mqtt']['topic'] + '/blinds/' + identifier
+    if 'name' in blind:
+        name = blind['name']
+    else:
+        name = "Mediola Blind"
+
+    payload = {
+      "command_topic" : topic + "/set",
+      "payload_open" : "open",
+      "payload_close" : "close",
+      "payload_stop" : "stop",
+      "optimistic" : True,
+      "device_class" : "blind",
+      "unique_id" : identifier,
+      "name" : name,
+      "device" : {
+        "identifiers" : identifier,
+        "manufacturer" : "Mediola",
+        "name" : "Mediola Blind",
+      },
+    }
+    if blind['type'] == 'ER':
+        payload["state_topic"] = topic + "/state"
+
+    payload = json.dumps(payload)
+    mqttc.subscribe(topic + "/set")
+    mqttc.publish(dtopic, payload=payload, retain=True)
+
 config_files = [
 #        ['/data/options.json', 'Running in hass.io add-on mode'],
         ['/config/mediola2mqtt.yaml', 'Running in legacy add-on mode'],
@@ -132,61 +193,11 @@ sock.bind(('', config['mediola']['udp_port']))
 if 'buttons' in config:
     # Buttons are configured as MQTT device triggers
     for button in config['buttons']:
-        identifier = button['type'] + '_' + button['adr']
-        dtopic = config['mqtt']['discovery_prefix'] + '/device_automation/' + \
-                 identifier + '/config'
-        topic = config['mqtt']['topic'] + '/buttons/' + identifier
-        if 'name' in button['type']:
-            name = button['name']
-        else:
-            name = "Mediola Button"
-
-        payload = {
-          "automation_type" : "trigger",
-          "topic" : topic,
-          "type" : "button_short_press",
-          "subtype" : "button_1",
-          "name" : name,
-          "device" : {
-            "identifiers" : identifier,
-            "manufacturer" : "Mediola",
-            "name" : "Mediola Button",
-          },
-        }
-        payload = json.dumps(payload)
-        mqttc.publish(dtopic, payload=payload, retain=True)
+        payload = publish_button(button)
 
 if 'blinds' in config:
     for blind in config['blinds']:
-        identifier = blind['type'] + '_' + blind['adr']
-        dtopic = config['mqtt']['discovery_prefix'] + '/cover/' + \
-                 identifier + '/config'
-        topic = config['mqtt']['topic'] + '/blinds/' + identifier
-        if 'name' in blind:
-            name = blind['name']
-        else:
-            name = "Mediola Blind"
-
-        payload = {
-          "command_topic" : topic + "/set",
-          "payload_open" : "open",
-          "payload_close" : "close",
-          "payload_stop" : "stop",
-          "optimistic" : True,
-          "device_class" : "blind",
-          "unique_id" : identifier,
-          "name" : name,
-          "device" : {
-            "identifiers" : identifier,
-            "manufacturer" : "Mediola",
-            "name" : "Mediola Blind",
-          },
-        }
-        if blind['type'] == 'ER':
-            payload["state_topic"] = topic + "/state"
-        payload = json.dumps(payload)
-        mqttc.subscribe(topic + "/set")
-        mqttc.publish(dtopic, payload=payload, retain=True)
+        payload = publish_blind(blind)
 
 while True:
     data, addr = sock.recvfrom(1024)
