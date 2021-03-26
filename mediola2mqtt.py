@@ -29,18 +29,28 @@ def on_disconnect(client, userdata, rc):
         print("Disconnected")
 
 def on_message(client, obj, msg):
-    print("Msg: " + msg.topic + " " + str(msg.qos) + " " + str(msg.payload))
+    print("Msg: " + ' '.join(msg.topic, str(msg.qos), str(msg.payload)))
     # Here we should send a HTTP request to Mediola to open the blind
     dtype, adr = msg.topic.split("_")
     dtype = dtype[dtype.rfind("/")+1:]
     adr = adr[:adr.find("/")]
     print(dtype)
     print(adr)
+    sub_identifier = None
+    if '-' in adr:
+        adr, sub_identifier = adr.split('-')
     for blind in config['blinds']:
         if dtype != blind['type'] or adr != blind['adr']:
             continue
 
-        if msg.payload == b'open':
+        if sub_identifier:
+            if sub_identifier == 'doubleup':
+                data = adr + "0A"
+            elif sub_identifier == 'doubledown':
+                data = adr + "0B"
+            else:
+                return
+        elif msg.payload == b'open':
             if dtype == 'RT':
                 data = "20" + adr
             elif dtype == 'ER':
@@ -198,6 +208,15 @@ if 'buttons' in config:
 if 'blinds' in config:
     for blind in config['blinds']:
         payload = publish_blind(blind)
+
+        # ER blinds have double tap up and down which tell the blind to go to
+        # preset settings. So we create two buttons for these
+        if blind['type'] != 'ER':
+            continue
+        payload = get_button_payload(blind, sub_identifier='doubleup',
+                sub_name='double up')
+        payload = get_button_payload(blind, sub_identifier='doubledown',
+                sub_name='double down')
 
 while True:
     data, addr = sock.recvfrom(1024)
