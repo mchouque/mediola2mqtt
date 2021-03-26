@@ -31,44 +31,44 @@ def on_disconnect(client, userdata, rc):
 def on_message(client, obj, msg):
     print("Msg: " + ' '.join(msg.topic, str(msg.qos), str(msg.payload)))
     # Here we should send a HTTP request to Mediola to open the blind
-    dtype, adr = msg.topic.split("_")
+    dtype, addr = msg.topic.split("_")
     dtype = dtype[dtype.rfind("/")+1:]
-    adr = adr[:adr.find("/")]
+    addr = addr[:addr.find("/")]
     print(dtype)
-    print(adr)
+    print(addr)
     sub_identifier = None
-    if '-' in adr:
-        adr, sub_identifier = adr.split('-')
+    if '-' in addr:
+        addr, sub_identifier = addr.split('-')
     for blind in config['blinds']:
-        if dtype != blind['type'] or adr != blind['adr']:
+        if dtype != blind['type'] or addr != blind['addr']:
             continue
 
         if sub_identifier:
             if sub_identifier == 'doubleup':
-                data = adr + "0A"
+                data = addr + "0A"
             elif sub_identifier == 'doubledown':
-                data = adr + "0B"
+                data = addr + "0B"
             else:
                 return
         elif msg.payload == b'open':
             if dtype == 'RT':
-                data = "20" + adr
+                data = "20" + addr
             elif dtype == 'ER':
-                data = adr + "01"
+                data = addr + "01"
             else:
                 return
         elif msg.payload == b'close':
             if dtype == 'RT':
-                data = "40" + adr
+                data = "40" + addr
             elif dtype == 'ER':
-                data = adr + "00"
+                data = addr + "00"
             else:
                 return
         elif msg.payload == b'stop':
             if dtype == 'RT':
-                data = "10" + adr
+                data = "10" + addr
             elif dtype == 'ER':
-                data = adr + "02"
+                data = addr + "02"
             else:
                 return
         else:
@@ -94,7 +94,7 @@ def on_log(client, obj, level, string):
     print(string)
 
 def publish_button(button, sub_identifier=None, sub_name=None):
-    identifier = button['type'] + '_' + button['adr']
+    identifier = button['type'] + '_' + button['addr']
     if sub_identifier:
         identifier += '-' + sub_identifier
     dtopic = config['mqtt']['disCovery_prefix'] + '/device_automation/' + \
@@ -123,7 +123,7 @@ def publish_button(button, sub_identifier=None, sub_name=None):
     mqttc.publish(dtopic, payload=payload, retain=True)
 
 def publish_blind(blind):
-    identifier = blind['type'] + '_' + blind['adr']
+    identifier = blind['type'] + '_' + blind['addr']
     dtopic = config['mqtt']['discovery_prefix'] + '/cover/' + \
              identifier + '/config'
     topic = config['mqtt']['topic'] + '/blinds/' + identifier
@@ -233,10 +233,10 @@ while True:
         if data_dict['type'] != button['type']:
             continue
 
-        if data_dict['data'][0:-2].lower() != button['adr'].lower():
+        if data_dict['data'][0:-2].lower() != button['addr'].lower():
             continue
 
-        identifier = button['type'] + '_' + button['adr']
+        identifier = button['type'] + '_' + button['addr']
         topic = config['mqtt']['topic'] + '/buttons/' + identifier
         payload = data_dict['data'][-2:]
         mqttc.publish(topic, payload=payload, retain=False)
@@ -245,10 +245,10 @@ while True:
         if data_dict['type'] != 'ER' or data_dict['type'] != blind['type']:
             continue
 
-        if data_dict['data'][0:2].lower() != blind['adr'].lower():
+        if data_dict['data'][0:2].lower() != blind['addr'].lower():
             continue
 
-        identifier = blind['type'] + '_' + blind['adr']
+        identifier = blind['type'] + '_' + blind['addr']
         topic = config['mqtt']['topic'] + '/blinds/' + identifier + '/state'
         state = data_dict['data'][-2:].lower()
         payload = 'unknown'
