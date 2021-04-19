@@ -29,7 +29,7 @@ def on_disconnect(client, userdata, rc):
         print("Disconnected")
 
 def on_message(client, obj, msg):
-    print("Msg: " + ' '.join(msg.topic, str(msg.qos), str(msg.payload)))
+    print("Msg: " + ' '.join([msg.topic, str(msg.qos), str(msg.payload)]))
     # Here we should send a HTTP request to Mediola to open the blind
     dtype, addr = msg.topic.split("_")
     dtype = dtype[dtype.rfind("/")+1:]
@@ -97,29 +97,29 @@ def publish_button(button, sub_identifier=None, sub_name=None):
     identifier = button['type'] + '_' + button['addr']
     if sub_identifier:
         identifier += '-' + sub_identifier
-    dtopic = config['mqtt']['disCovery_prefix'] + '/device_automation/' + \
+    dtopic = config['mqtt']['discovery_prefix'] + '/switch/' + \
              identifier + '/config'
     topic = config['mqtt']['topic'] + '/buttons/' + identifier
-    if 'name' in button['type']:
-        name = button['name']
-    else:
-        name = "Mediola Button"
+    name = "Mediola Button"
+    if 'name' in button:
+        name += ' ' + button['name']
     if sub_name:
         name += ' ' + sub_name
 
     payload = {
-      "automation_type" : "trigger",
-      "topic" : topic,
-      "type" : "button_short_press",
-      "subtype" : "button_1",
+      "command_topic" : topic + "/set",
+      "optimistic" : True,
+      "unique_id" : identifier,
       "name" : name,
       "device" : {
         "identifiers" : identifier,
         "manufacturer" : "Mediola",
-        "name" : "Mediola Button",
+        "name" : name,
+        "suggested_area": button['name'],
       },
     }
     payload = json.dumps(payload)
+    mqttc.subscribe(topic + "/set")
     mqttc.publish(dtopic, payload=payload, retain=True)
 
 def publish_blind(blind):
@@ -127,10 +127,9 @@ def publish_blind(blind):
     dtopic = config['mqtt']['discovery_prefix'] + '/cover/' + \
              identifier + '/config'
     topic = config['mqtt']['topic'] + '/blinds/' + identifier
+    name = "Mediola Blind"
     if 'name' in blind:
-        name = blind['name']
-    else:
-        name = "Mediola Blind"
+        name += ' ' + blind['name']
 
     payload = {
       "command_topic" : topic + "/set",
@@ -144,7 +143,8 @@ def publish_blind(blind):
       "device" : {
         "identifiers" : identifier,
         "manufacturer" : "Mediola",
-        "name" : "Mediola Blind",
+        "name" : name,
+        "suggested_area": blind['name'],
       },
     }
     if blind['type'] == 'ER':
@@ -165,8 +165,13 @@ for config_file, comment in config_files:
     if not os.path.isfile(config_file):
         continue
     print(comment)
-    with open('/data/options.json', 'r') as fp:
-        config = json.load(fp)
+    with open(config_file, 'r') as fp:
+        if config_file.endswith('.json'):
+            config = json.load(fp)
+            break
+        if config_file.endswith('.yaml'):
+            config = yaml.safe_load(fp)
+            break
     break
 
 if not config:
@@ -213,10 +218,8 @@ if 'blinds' in config:
         # preset settings. So we create two buttons for these
         if blind['type'] != 'ER':
             continue
-        payload = get_button_payload(blind, sub_identifier='doubleup',
-                sub_name='double up')
-        payload = get_button_payload(blind, sub_identifier='doubledown',
-                sub_name='double down')
+        publish_button(blind, sub_identifier='doubleup', sub_name='double up')
+        publish_button(blind, sub_identifier='doubledown', sub_name='double down')
 
 while True:
     data, addr = sock.recvfrom(1024)
