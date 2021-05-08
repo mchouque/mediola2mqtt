@@ -43,30 +43,30 @@ def on_message(client, obj, msg):
 
         if sub_identifier:
             if sub_identifier == 'doubleup':
-                data = "%02x" % addr + "0A"
+                data = "%02x" % int(addr) + "0A"
             elif sub_identifier == 'doubledown':
-                data = "%02x" % addr + "0B"
+                data = "%02x" % int(addr) + "0B"
             else:
                 return
         elif msg.payload == b'open':
             if dtype == 'RT':
                 data = "20" + addr
             elif dtype == 'ER':
-                data = "%02x" % addr + "01"
+                data = "%02x" % int(addr) + "01"
             else:
                 return
         elif msg.payload == b'close':
             if dtype == 'RT':
                 data = "40" + addr
             elif dtype == 'ER':
-                data = "%02x" % addr + "00"
+                data = "%02x" % int(addr) + "00"
             else:
                 return
         elif msg.payload == b'stop':
             if dtype == 'RT':
                 data = "10" + addr
             elif dtype == 'ER':
-                data = "%02x" % addr + "02"
+                data = "%02x" % int(addr) + "02"
             else:
                 return
         else:
