@@ -224,10 +224,6 @@ if 'blinds' in config:
 
 while True:
     data, (ip, port) = sock.recvfrom(1024)
-    if ip != config['mediola']['host']:
-        print('Ignoring received message from unknown host %s:%d : %s' % (ip, port, data))
-        continue
-
     if config['mqtt']['debug']:
         print('Received message from %s:%d : %s' % (ip, port, data))
         mqttc.publish(config['mqtt']['topic'], payload=data, retain=False)
@@ -243,7 +239,6 @@ while True:
         print("Couldn't load text as JSON: ", e)
         continue
 
-    print('Received message from %s:%d : %s' % (ip, port, data))
     for button in config['buttons']:
         if data_dict['type'] != button['type']:
             continue
@@ -254,6 +249,7 @@ while True:
         identifier = button['type'] + '_' + button['addr']
         topic = config['mqtt']['topic'] + '/buttons/' + identifier
         payload = data_dict['data'][-2:]
+        print('Publishing to %s: %s' % (topic, payload))
         mqttc.publish(topic, payload=payload, retain=False)
 
     for blind in config['blinds']:
@@ -277,4 +273,5 @@ while True:
             payload = 'closing'
         elif state in ['0d', '05']:
             payload = 'stopped'
+        print('Publishing to %s: %s' % (topic, payload))
         mqttc.publish(topic, payload=payload, retain=True)
