@@ -251,6 +251,7 @@ while True:
         payload = data_dict['data'][-2:]
         print('Publishing to %s: %s' % (topic, payload))
         mqttc.publish(topic, payload=payload, retain=False)
+        break
 
     for blind in config['blinds']:
         if data_dict['type'] != 'ER' or data_dict['type'] != blind['type']:
@@ -275,3 +276,4 @@ while True:
             payload = 'stopped'
         print('Publishing to %s: %s' % (topic, payload))
         mqttc.publish(topic, payload=payload, retain=True)
+        break
