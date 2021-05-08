@@ -274,6 +274,11 @@ while True:
             payload = 'closing'
         elif state in ['0d', '05']:
             payload = 'stopped'
+        elif state == '03':
+            # intermediate position stop
+            continue
+        else:
+            print('Received unknown state: ', state)
         print('Publishing to %s: %s' % (topic, payload))
         mqttc.publish(topic, payload=payload, retain=True)
         break
