@@ -29,13 +29,11 @@ def on_disconnect(client, userdata, rc):
         print("Disconnected")
 
 def on_message(client, obj, msg):
-    print("Msg: " + ' '.join([msg.topic, str(msg.qos), str(msg.payload)]))
+    print("Sending Message: " + ', '.join([msg.topic, str(msg.qos), str(msg.payload)]))
     # Here we should send a HTTP request to Mediola to open the blind
     dtype, addr = msg.topic.split("_")
     dtype = dtype[dtype.rfind("/")+1:]
     addr = addr[:addr.find("/")]
-    print(dtype)
-    print(addr)
     sub_identifier = None
     if '-' in addr:
         addr, sub_identifier = addr.split('-')
@@ -45,30 +43,30 @@ def on_message(client, obj, msg):
 
         if sub_identifier:
             if sub_identifier == 'doubleup':
-                data = addr + "0A"
+                data = "%02x" % addr + "0A"
             elif sub_identifier == 'doubledown':
-                data = addr + "0B"
+                data = "%02x" % addr + "0B"
             else:
                 return
         elif msg.payload == b'open':
             if dtype == 'RT':
                 data = "20" + addr
             elif dtype == 'ER':
-                data = addr + "01"
+                data = "%02x" % addr + "01"
             else:
                 return
         elif msg.payload == b'close':
             if dtype == 'RT':
                 data = "40" + addr
             elif dtype == 'ER':
-                data = addr + "00"
+                data = "%02x" % addr + "00"
             else:
                 return
         elif msg.payload == b'stop':
             if dtype == 'RT':
                 data = "10" + addr
             elif dtype == 'ER':
-                data = addr + "02"
+                data = "%02x" % addr + "02"
             else:
                 return
         else:
@@ -81,8 +79,11 @@ def on_message(client, obj, msg):
           "data" : data
         }
         url = 'http://' + config['mediola']['host'] + '/command'
-        response = requests.get(url, params=payload, headers={'Connection':'close'})
-        print(response)
+        try:
+            response = requests.get(url, params=payload, headers={'Connection':'close'})
+        except HTTPError as e:
+            print("Couldn't send request: ", e)
+        print('Got reponse: ', response)
 
 def on_publish(client, obj, mid):
     print("Pub: " + str(mid))
@@ -222,16 +223,27 @@ if 'blinds' in config:
         publish_button(blind, sub_identifier='doubledown', sub_name='double down')
 
 while True:
-    data, addr = sock.recvfrom(1024)
-    if config['mqtt']['debug']:
-        print('Received message: %s' % data)
-        mqttc.publish(config['mqtt']['topic'], payload=data, retain=False)
-
-    if not data.startswith(b'{XC_EVT}'):
+    data, (ip, port) = sock.recvfrom(1024)
+    if ip != config['mediola']['host']:
+        print('Ignoring received message from unknown host %s:%d : %s' % (ip, port, data))
         continue
 
-    data = data.replace(b'{XC_EVT}', b'')
-    data_dict = json.loads(data)
+    if config['mqtt']['debug']:
+        print('Received message from %s:%d : %s' % (ip, port, data))
+        mqttc.publish(config['mqtt']['topic'], payload=data, retain=False)
+
+    header = b'{XC_EVT}'
+    if not data.startswith(header):
+        continue
+
+    data = data[len(header):]
+    try:
+        data_dict = json.loads(data)
+    except ValueError as e:
+        print("Couldn't load text as JSON: ", e)
+        continue
+
+    print('Received message from %s:%d : %s' % (ip, port, data))
     for button in config['buttons']:
         if data_dict['type'] != button['type']:
             continue
@@ -248,7 +260,7 @@ while True:
         if data_dict['type'] != 'ER' or data_dict['type'] != blind['type']:
             continue
 
-        if data_dict['data'][0:2].lower() != blind['addr'].lower():
+        if '%02d' % int(data_dict['data'][0:2], 16) != blind['addr'].lower():
             continue
 
         identifier = blind['type'] + '_' + blind['addr']
@@ -263,4 +275,6 @@ while True:
             payload = 'opening'
         elif state in ['09', '0b']:
             payload = 'closing'
+        elif state in ['0d', '05']:
+            payload = 'stopped'
         mqttc.publish(topic, payload=payload, retain=True)
