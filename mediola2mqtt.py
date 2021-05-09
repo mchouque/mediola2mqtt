@@ -292,4 +292,8 @@ while True:
     if found:
         continue
 
+    # Ignore what seems to be Infra Red messages for now
+    if data_dict['type'] == 'IR':
+        continue
+
     print('Received unknown message from %s:%d : %s' % (ip, port, data))
