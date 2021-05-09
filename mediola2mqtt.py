@@ -239,6 +239,7 @@ while True:
         print("Couldn't load text as JSON: ", e)
         continue
 
+    found = False
     for button in config['buttons']:
         if data_dict['type'] != button['type']:
             continue
@@ -251,7 +252,11 @@ while True:
         payload = data_dict['data'][-2:]
         print('Publishing to %s: %s' % (topic, payload))
         mqttc.publish(topic, payload=payload, retain=False)
+        found = True
         break
+
+    if found:
+        continue
 
     for blind in config['blinds']:
         if data_dict['type'] != 'ER' or data_dict['type'] != blind['type']:
@@ -281,4 +286,10 @@ while True:
             print('Received unknown state: ', state)
         print('Publishing to %s: %s' % (topic, payload))
         mqttc.publish(topic, payload=payload, retain=True)
+        found = True
         break
+
+    if found:
+        continue
+
+    print('Received unknown message from %s:%d : %s' % (ip, port, data))
