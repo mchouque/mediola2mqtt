@@ -8,7 +8,12 @@ import socket
 import json
 import yaml
 import requests
+import datetime
 import paho.mqtt.client as mqtt
+
+def print_log(*args, **kwargs):
+    tstamp ='{:%Y-%m-%d %H:%M:%S} '.format(datetime.datetime.now())
+    print(tstamp + " "join(map(str, args)), **kwargs)
 
 # Define MQTT event callbacks
 def on_connect(client, userdata, flags, rc):
@@ -20,16 +25,16 @@ def on_connect(client, userdata, flags, rc):
         4: "bad username or password",
         5: "not authorised"
     }
-    print("MQTT: " + connect_statuses.get(rc, "Unknown error"))
+    print_log("MQTT: " + connect_statuses.get(rc, "Unknown error"))
 
 def on_disconnect(client, userdata, rc):
     if rc != 0:
-        print("Unexpected disconnection")
+        print_log("Unexpected disconnection")
     else:
-        print("Disconnected")
+        print_log("Disconnected")
 
 def on_message(client, obj, msg):
-    print("Sending Message: " + ', '.join([msg.topic, str(msg.qos), str(msg.payload)]))
+    print_log("Sending Message: " + ', '.join([msg.topic, str(msg.qos), str(msg.payload)]))
     # Here we should send a HTTP request to Mediola to open the blind
     dtype, addr = msg.topic.split("_")
     dtype = dtype[dtype.rfind("/")+1:]
@@ -70,7 +75,7 @@ def on_message(client, obj, msg):
             else:
                 return
         else:
-            print("Wrong command")
+            print_log("Wrong command")
             return
 
         payload = {
@@ -82,17 +87,17 @@ def on_message(client, obj, msg):
         try:
             response = requests.get(url, params=payload, headers={'Connection':'close'})
         except HTTPError as e:
-            print("Couldn't send request: ", e)
-        print('Got reponse: ', response)
+            print_log("Couldn't send request: ", e)
+        print_log('Got reponse: ', response)
 
 def on_publish(client, obj, mid):
-    print("Pub: " + str(mid))
+    print_log("Pub: " + str(mid))
 
 def on_subscribe(client, obj, mid, granted_qos):
-    print("Subscribed: " + str(mid) + " " + str(granted_qos))
+    print_log("Subscribed: " + str(mid) + " " + str(granted_qos))
 
 def on_log(client, obj, level, string):
-    print(string)
+    print_log(string)
 
 def publish_button(button, sub_identifier=None, sub_name=None):
     identifier = button['type'] + '_' + button['addr']
@@ -165,7 +170,7 @@ config = None
 for config_file, comment in config_files:
     if not os.path.isfile(config_file):
         continue
-    print(comment)
+    print_log(comment)
     with open(config_file, 'r') as fp:
         if config_file.endswith('.json'):
             config = json.load(fp)
@@ -176,7 +181,7 @@ for config_file, comment in config_files:
     break
 
 if not config:
-    print('Configuration file not found, exiting.')
+    print_log('Configuration file not found, exiting.')
     sys.exit(1)
 
 # Setup MQTT connection
@@ -188,7 +193,7 @@ mqttc.on_disconnect = on_disconnect
 mqttc.on_message = on_message
 
 if config['mqtt']['debug']:
-    print("Debugging messages enabled")
+    print_log("Debugging messages enabled")
     mqttc.on_log = on_log
     mqttc.on_publish = on_publish
 
@@ -197,7 +202,7 @@ if config['mqtt']['username'] and config['mqtt']['password']:
 try:
     mqttc.connect(config['mqtt']['host'], config['mqtt']['port'], 60)
 except:
-    print('Error connecting to MQTT, will now quit.')
+    print_log('Error connecting to MQTT, will now quit.')
     sys.exit(1)
 mqttc.loop_start()
 
@@ -225,7 +230,7 @@ if 'blinds' in config:
 while True:
     data, (ip, port) = sock.recvfrom(1024)
     if config['mqtt']['debug']:
-        print('Received message from %s:%d : %s' % (ip, port, data))
+        print_log('Received message from %s:%d : %s' % (ip, port, data))
         mqttc.publish(config['mqtt']['topic'], payload=data, retain=False)
 
     header = b'{XC_EVT}'
@@ -236,7 +241,7 @@ while True:
     try:
         data_dict = json.loads(data)
     except ValueError as e:
-        print("Couldn't load text as JSON: ", e)
+        print_log("Couldn't load text as JSON: ", e)
         continue
 
     found = False
@@ -250,7 +255,7 @@ while True:
         identifier = button['type'] + '_' + button['addr']
         topic = config['mqtt']['topic'] + '/buttons/' + identifier
         payload = data_dict['data'][-2:]
-        print('Publishing to %s: %s' % (topic, payload))
+        print_log('Publishing to %s: %s' % (topic, payload))
         mqttc.publish(topic, payload=payload, retain=False)
         found = True
         break
@@ -283,8 +288,8 @@ while True:
             # intermediate position stop
             continue
         else:
-            print('Received unknown state: ', state)
-        print('Publishing to %s: %s' % (topic, payload))
+            print_log('Received unknown state: ', state)
+        print_log('Publishing to %s: %s' % (topic, payload))
         mqttc.publish(topic, payload=payload, retain=True)
         found = True
         break
@@ -296,4 +301,4 @@ while True:
     if data_dict['type'] == 'IR':
         continue
 
-    print('Received unknown message from %s:%d : %s' % (ip, port, data))
+    print_log('Received unknown message from %s:%d : %s' % (ip, port, data))
