@@ -13,7 +13,7 @@ import paho.mqtt.client as mqtt
 
 def print_log(*args, **kwargs):
     tstamp ='{:%Y-%m-%d %H:%M:%S} '.format(datetime.datetime.now())
-    print(tstamp + " "join(map(str, args)), **kwargs)
+    print(tstamp + " ".join(map(str, args)), **kwargs)
 
 # Define MQTT event callbacks
 def on_connect(client, userdata, flags, rc):
