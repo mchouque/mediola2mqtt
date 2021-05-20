@@ -11,6 +11,8 @@ import requests
 import datetime
 import paho.mqtt.client as mqtt
 
+subscribed = []
+
 def print_log(*args, **kwargs):
     tstamp ='{:%Y-%m-%d %H:%M:%S} '.format(datetime.datetime.now())
     print(tstamp + " ".join(map(str, args)), **kwargs)
@@ -26,6 +28,9 @@ def on_connect(client, userdata, flags, rc):
         5: "not authorised"
     }
     print_log("MQTT: " + connect_statuses.get(rc, "Unknown error"))
+    print_log("Resubscribing to MQTT")
+    for topic in subscribed:
+        client.subscribe(topic + "/set")
 
 def on_disconnect(client, userdata, rc):
     if rc != 0:
@@ -126,6 +131,7 @@ def publish_button(button, sub_identifier=None, sub_name=None):
     }
     payload = json.dumps(payload)
     mqttc.subscribe(topic + "/set")
+    subscribed.append(topic + "/set")
     mqttc.publish(dtopic, payload=payload, retain=True)
 
 def publish_blind(blind):
@@ -158,6 +164,7 @@ def publish_blind(blind):
 
     payload = json.dumps(payload)
     mqttc.subscribe(topic + "/set")
+    subscribed.append(topic + "/set")
     mqttc.publish(dtopic, payload=payload, retain=True)
 
 config_files = [
@@ -286,6 +293,7 @@ while True:
             payload = 'stopped'
         elif state == '03':
             # intermediate position stop
+            payload = 'open'
             continue
         else:
             print_log('Received unknown state: ', state)
