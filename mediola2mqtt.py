@@ -30,7 +30,7 @@ def on_connect(client, userdata, flags, rc):
     print_log("MQTT: " + connect_statuses.get(rc, "Unknown error"))
     print_log("Resubscribing to MQTT")
     for topic in subscribed:
-        client.subscribe(topic + "/set")
+        client.subscribe(topic)
 
 def on_disconnect(client, userdata, rc):
     if rc != 0:
