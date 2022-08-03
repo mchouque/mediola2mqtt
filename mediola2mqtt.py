@@ -294,9 +294,9 @@ while True:
         elif state == '03':
             # intermediate position stop
             payload = 'open'
-            continue
         else:
-            print_log('Received unknown state: ', state)
+            print_log('Received unknown state from %s:%d : %s (state %s)' % (ip,
+                port, data, state))
         print_log('Publishing to %s: %s' % (topic, payload))
         mqttc.publish(topic, payload=payload, retain=True)
         found = True
