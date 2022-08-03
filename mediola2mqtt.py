@@ -293,6 +293,9 @@ while True:
             payload = 'stopped'
         elif state == '03':
             # intermediate position stop
+            payload = 'close'
+        elif state == '04':
+            # intermediate position up (it seems)
             payload = 'open'
         else:
             print_log('Received unknown state from %s:%d : %s (state %s)' % (ip,
