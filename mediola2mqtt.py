@@ -95,13 +95,14 @@ def on_message(client, obj, msg):
                 response = requests.get(url, params=payload,
                                         headers={'Connection':'close'},
                                         timeout=(1, 2))
-            except HTTPError as e:
+            except requests.exceptions.RequestException as e:
                 print_log("Couldn't send request: ", e)
+
             if response.status_code == 200:
-                print_log('Got reponse: ', response)
+                print_log('Got OK reponse: ', response)
                 break
             else:
-                print_log('Got reponse: ', response, 'retrying')
+                print_log('Got NOK reponse: ', response, 'retrying')
             i += 1
 
 def on_publish(client, obj, mid):
