@@ -89,11 +89,20 @@ def on_message(client, obj, msg):
           "data" : data
         }
         url = 'http://' + config['mediola']['host'] + '/command'
-        try:
-            response = requests.get(url, params=payload, headers={'Connection':'close'})
-        except HTTPError as e:
-            print_log("Couldn't send request: ", e)
-        print_log('Got reponse: ', response)
+        i = 0
+        while i <= 3:
+            try:
+                response = requests.get(url, params=payload,
+                                        headers={'Connection':'close'},
+                                        timeout=(1, 2))
+            except HTTPError as e:
+                print_log("Couldn't send request: ", e)
+            if response.status_code == 200:
+                print_log('Got reponse: ', response)
+                break
+            else:
+                print_log('Got reponse: ', response, 'retrying')
+            i += 1
 
 def on_publish(client, obj, mid):
     print_log("Pub: " + str(mid))
