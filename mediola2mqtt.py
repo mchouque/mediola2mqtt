@@ -90,6 +90,7 @@ def on_message(client, obj, msg):
         }
         url = 'http://' + config['mediola']['host'] + '/command'
         i = 0
+        sent = False
         while i <= 3:
             try:
                 response = requests.get(url, params=payload,
@@ -97,13 +98,19 @@ def on_message(client, obj, msg):
                                         timeout=(1, 2))
             except requests.exceptions.RequestException as e:
                 print_log("Couldn't send request: ", e)
+                i += 1
+                continue
 
             if response.status_code == 200:
+                sent = True
                 print_log('Got OK reponse: ', response)
                 break
-            else:
-                print_log('Got NOK reponse: ', response, 'retrying')
+
+            print_log('Got NOK reponse: ', response, 'retrying')
             i += 1
+
+        if not sent:
+            print_log("Failed to send Message: " + ', '.join([msg.topic, str(msg.qos), str(msg.payload)]))
 
 def on_publish(client, obj, mid):
     print_log("Pub: " + str(mid))
