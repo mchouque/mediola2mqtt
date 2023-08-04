@@ -142,7 +142,7 @@ def publish_button(button, sub_identifier=None, sub_name=None):
       "device" : {
         "identifiers" : identifier,
         "manufacturer" : "Mediola",
-        "name" : name,
+        "name" : "Mediola Button",
         "suggested_area": button['name'],
       },
     }
@@ -172,7 +172,7 @@ def publish_blind(blind):
       "device" : {
         "identifiers" : identifier,
         "manufacturer" : "Mediola",
-        "name" : name,
+        "name" : "Mediola Blind",
         "suggested_area": blind['name'],
       },
     }
