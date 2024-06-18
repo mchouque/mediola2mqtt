@@ -274,12 +274,12 @@ while True:
     if not readable:
         # Timeout
         data = get_states()
-        got_state = True
+        refresh = True
         ip = port = 'N/A'
         if config['mqtt']['debug']:
             print_log(f'Got states: {data}')
     else:
-        got_state = False
+        refresh = False
         if sock not in readable:
             continue
         data, (ip, port) = sock.recvfrom(1024)
@@ -336,7 +336,7 @@ while True:
             identifier = button['type'] + '_' + button['addr']
             topic = config['mqtt']['topic'] + '/buttons/' + identifier
             payload = data_dict[key][-2:]
-            print_log('Publishing to %s: %s' % (topic, payload))
+            print_log('%sing to %s: %s' % ('Refresh' if refresh else 'Publish', topic, payload))
             mqttc.publish(topic, payload=payload, retain=False)
             found = True
             break
@@ -392,10 +392,10 @@ while True:
             else:
                 print_log('Received unknown state from %s:%d : %s (state %s)' % (ip,
                     port, data, state))
-            print_log('Publishing to %s: %s' % (topic, payload))
+            print_log('%sing to %s: %s' % ('Refresh' if refresh else 'Publish', topic, payload))
             mqttc.publish(topic, payload=payload, retain=True)
             if position is not None:
-                print_log('Publishing to %s: %s' % (position_topic, position))
+                print_log('%sing to %s: %s' % ('Refresh' if refresh else 'Publish', position_topic, position))
                 mqttc.publish(position_topic, payload=position, retain=True)
 
             found = True
@@ -404,7 +404,7 @@ while True:
         if found:
             continue
 
-        if not got_state:
+        if not refresh:
             print_log('Received unknown message from %s:%d : %s' % (ip, port,
                                                                     data_dict))
         else:
