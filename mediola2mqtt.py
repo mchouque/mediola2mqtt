@@ -128,7 +128,7 @@ def publish_button(button, sub_identifier=None, sub_name=None):
     dtopic = config['mqtt']['discovery_prefix'] + '/switch/' + \
              identifier + '/config'
     topic = config['mqtt']['topic'] + '/buttons/' + identifier
-    name = "Mediola Button"
+    name = "Button"
     if 'name' in button:
         name += ' ' + button['name']
     if sub_name:
@@ -142,7 +142,7 @@ def publish_button(button, sub_identifier=None, sub_name=None):
       "device" : {
         "identifiers" : identifier,
         "manufacturer" : "Mediola",
-        "name" : "Mediola Button",
+        "name" : "Button",
         "suggested_area": button['name'],
       },
     }
@@ -156,7 +156,7 @@ def publish_blind(blind):
     dtopic = config['mqtt']['discovery_prefix'] + '/cover/' + \
              identifier + '/config'
     topic = config['mqtt']['topic'] + '/blinds/' + identifier
-    name = "Mediola Blind"
+    name = "Blind"
     if 'name' in blind:
         name += ' ' + blind['name']
 
@@ -172,7 +172,7 @@ def publish_blind(blind):
       "device" : {
         "identifiers" : identifier,
         "manufacturer" : "Mediola",
-        "name" : "Mediola Blind",
+        "name" : "Blind",
         "suggested_area": blind['name'],
       },
     }
