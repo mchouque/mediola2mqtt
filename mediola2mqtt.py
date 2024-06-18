@@ -310,7 +310,7 @@ while True:
             payload = 'stopped'
         elif state == '03':
             # intermediate position stop
-            payload = 'close'
+            payload = 'closed'
         elif state == '04':
             # intermediate position up (it seems)
             payload = 'open'
