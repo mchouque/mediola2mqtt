@@ -210,7 +210,7 @@ if not config:
     sys.exit(1)
 
 # Setup MQTT connection
-mqttc = mqtt.Client()
+mqttc = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
 
 mqttc.on_connect = on_connect
 mqttc.on_subscribe = on_subscribe
