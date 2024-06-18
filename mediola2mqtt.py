@@ -18,30 +18,22 @@ def print_log(*args, **kwargs):
     print(tstamp + " ".join(map(str, args)), **kwargs)
 
 # Define MQTT event callbacks
-def on_connect(client, userdata, flags, rc):
-    connect_statuses = {
-        0: "Connected",
-        1: "incorrect protocol version",
-        2: "invalid client ID",
-        3: "server unavailable",
-        4: "bad username or password",
-        5: "not authorised"
-    }
-    print_log("MQTT: " + connect_statuses.get(rc, "Unknown error"))
+def on_connect(client, userdata, flags, reason_code, properties):
+    print_log("MQTT: " + reason_code.getName())
     print_log("Resubscribing to MQTT")
     for topic in subscribed:
         client.subscribe(topic)
 
-def on_disconnect(client, userdata, rc):
+def on_disconnect(client, userdata, disconnect_flags, reason_code, properties):
     if rc != 0:
         print_log("Unexpected disconnection")
     else:
         print_log("Disconnected")
 
-def on_message(client, obj, msg):
-    print_log("Sending Message: " + ', '.join([msg.topic, str(msg.qos), str(msg.payload)]))
+def on_message(client, userdata, message):
+    print_log("Sending Message: " + ', '.join([message.topic, str(message.qos), str(message.payload)]))
     # Here we should send a HTTP request to Mediola to open the blind
-    dtype, addr = msg.topic.split("_")
+    dtype, addr = message.topic.split("_")
     dtype = dtype[dtype.rfind("/")+1:]
     addr = addr[:addr.find("/")]
     sub_identifier = None
@@ -58,21 +50,21 @@ def on_message(client, obj, msg):
                 data = "%02x" % int(addr) + "0B"
             else:
                 return
-        elif msg.payload == b'open':
+        elif message.payload == b'open':
             if dtype == 'RT':
                 data = "20" + addr
             elif dtype == 'ER':
                 data = "%02x" % int(addr) + "01"
             else:
                 return
-        elif msg.payload == b'close':
+        elif message.payload == b'close':
             if dtype == 'RT':
                 data = "40" + addr
             elif dtype == 'ER':
                 data = "%02x" % int(addr) + "00"
             else:
                 return
-        elif msg.payload == b'stop':
+        elif message.payload == b'stop':
             if dtype == 'RT':
                 data = "10" + addr
             elif dtype == 'ER':
@@ -110,16 +102,19 @@ def on_message(client, obj, msg):
             i += 1
 
         if not sent:
-            print_log("Failed to send Message: " + ', '.join([msg.topic, str(msg.qos), str(msg.payload)]))
+            print_log("Failed to send Message: " + ', '.join([message.topic, str(message.qos), str(message.payload)]))
 
-def on_publish(client, obj, mid):
+def on_publish(client, userdata, mid, reason_code, properties):
     print_log("Pub: " + str(mid))
 
-def on_subscribe(client, obj, mid, granted_qos):
-    print_log("Subscribed: " + str(mid) + " " + str(granted_qos))
+def on_subscribe(client, userdata, mid, reason_code_list, properties):
+    if reason_code_list[0].is_failure:
+        print(f"Broker rejected you subscription for {mid}: {reason_code_list[0]}")
+    else:
+        print(f"Broker granted the following QoS for {mid}: {reason_code_list[0].value}")
 
-def on_log(client, obj, level, string):
-    print_log(string)
+def on_log(client, userdata, paho_log_level, messages):
+    print_log(messages)
 
 def publish_button(button, sub_identifier=None, sub_name=None):
     identifier = button['type'] + '_' + button['addr']
