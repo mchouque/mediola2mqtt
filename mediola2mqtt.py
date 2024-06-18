@@ -178,6 +178,7 @@ def publish_blind(blind):
     }
     if blind['type'] == 'ER':
         payload["state_topic"] = topic + "/state"
+        payload["position_topic"] = topic + "/position"
 
     payload = json.dumps(payload)
     mqttc.subscribe(topic + "/set")
@@ -296,8 +297,10 @@ while True:
 
         identifier = blind['type'] + '_' + blind['addr']
         topic = config['mqtt']['topic'] + '/blinds/' + identifier + '/state'
+        position_topic = config['mqtt']['topic'] + '/blinds/' + identifier + '/position'
         state = data_dict['data'][-2:].lower()
         payload = 'unknown'
+        position = None
         if state in ['01', '0e']:
             payload = 'open'
         elif state in ['02', '0f']:
@@ -311,14 +314,20 @@ while True:
         elif state == '03':
             # intermediate position stop
             payload = 'closed'
+            position = 10
         elif state == '04':
             # intermediate position up (it seems)
             payload = 'open'
+            position = 90
         else:
             print_log('Received unknown state from %s:%d : %s (state %s)' % (ip,
                 port, data, state))
         print_log('Publishing to %s: %s' % (topic, payload))
         mqttc.publish(topic, payload=payload, retain=True)
+        if position:
+            print_log('Publishing to %s: %s' % (position_topic, position))
+            mqttc.publish(position_topic, payload=position, retain=True)
+
         found = True
         break
 
