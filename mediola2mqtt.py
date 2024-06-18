@@ -4,6 +4,7 @@
 
 import os
 import sys
+import select
 import socket
 import json
 import yaml
@@ -12,6 +13,36 @@ import datetime
 import paho.mqtt.client as mqtt
 
 subscribed = []
+
+def call_mediola(payload, verbose=True):
+    url = 'http://' + config['mediola']['host'] + '/command'
+    i = 0
+    sent = False
+    result = None
+    while i <= 3:
+        try:
+            response = requests.get(url, params=payload,
+                                    headers={'Connection':'close'},
+                                    timeout=(1, 2))
+        except requests.exceptions.RequestException as e:
+            print_log("Couldn't send request: ", e)
+            i += 1
+            continue
+
+        if response.status_code == 200:
+            sent = True
+            if verbose:
+                print_log('Got OK reponse: ', response)
+            result = response
+            break
+
+        print_log('Got NOK reponse: ', response, 'retrying')
+        i += 1
+
+    if not sent:
+        print_log("Failed to send Message: " + ', '.join([message.topic, str(message.qos), str(message.payload)]))
+
+    return result
 
 def print_log(*args, **kwargs):
     tstamp ='{:%Y-%m-%d %H:%M:%S} '.format(datetime.datetime.now())
@@ -80,29 +111,7 @@ def on_message(client, userdata, message):
           "type" : dtype,
           "data" : data
         }
-        url = 'http://' + config['mediola']['host'] + '/command'
-        i = 0
-        sent = False
-        while i <= 3:
-            try:
-                response = requests.get(url, params=payload,
-                                        headers={'Connection':'close'},
-                                        timeout=(1, 2))
-            except requests.exceptions.RequestException as e:
-                print_log("Couldn't send request: ", e)
-                i += 1
-                continue
-
-            if response.status_code == 200:
-                sent = True
-                print_log('Got OK reponse: ', response)
-                break
-
-            print_log('Got NOK reponse: ', response, 'retrying')
-            i += 1
-
-        if not sent:
-            print_log("Failed to send Message: " + ', '.join([message.topic, str(message.qos), str(message.payload)]))
+        call_mediola(payload)
 
 def on_publish(client, userdata, mid, reason_code, properties):
     print_log("Pub: " + str(mid))
@@ -180,6 +189,19 @@ def publish_blind(blind):
     subscribed.append(topic + "/set")
     mqttc.publish(dtopic, payload=payload, retain=True)
 
+def get_states():
+    payload = {
+        "XC_FNC" : "GetStates",
+    }
+    response = call_mediola(payload, verbose=False)
+
+    header = b'{XC_SUC}'
+    if not response.content.startswith(header):
+        print_log(f'Failed to get states: {response}')
+        return
+
+    return response.content[len(header):]
+
 config_files = [
 #        ['/data/options.json', 'Running in hass.io add-on mode'],
         ['/config/mediola2mqtt.yaml', 'Running in legacy add-on mode'],
@@ -248,89 +270,142 @@ if 'blinds' in config:
         publish_button(blind, sub_identifier='doubledown', sub_name='double down')
 
 while True:
-    data, (ip, port) = sock.recvfrom(1024)
+    readable, _, _ = select.select([sock], [], [], 10)
+    if not readable:
+        # Timeout
+        data = get_states()
+        got_state = True
+        ip = port = 'N/A'
+        if config['mqtt']['debug']:
+            print_log(f'Got states: {data}')
+    else:
+        got_state = False
+        if sock not in readable:
+            continue
+        data, (ip, port) = sock.recvfrom(1024)
+
+        header = b'{XC_EVT}'
+        if not data.startswith(header):
+            print_log(f'Received something else than an event: {data}')
+            continue
+
+        data = data[len(header):]
+
     if config['mqtt']['debug']:
         print_log('Received message from %s:%d : %s' % (ip, port, data))
         mqttc.publish(config['mqtt']['topic'], payload=data, retain=False)
 
-    header = b'{XC_EVT}'
-    if not data.startswith(header):
-        continue
-
-    data = data[len(header):]
     try:
-        data_dict = json.loads(data)
+        all_data = json.loads(data)
     except ValueError as e:
         print_log("Couldn't load text as JSON: ", e)
         continue
 
-    found = False
-    for button in config['buttons']:
-        if data_dict['type'] != button['type']:
+    if isinstance(all_data, dict):
+        all_data = [all_data]
+
+    for data_dict in all_data:
+        found = False
+        # Ignore what seems to be Infra Red messages for now
+        if data_dict['type'] == 'IR':
             continue
 
-        if data_dict['data'][0:-2].lower() != button['addr'].lower():
+        # Ignore type EVENT
+        if data_dict['type'] == 'EVENT':
             continue
 
-        identifier = button['type'] + '_' + button['addr']
-        topic = config['mqtt']['topic'] + '/buttons/' + identifier
-        payload = data_dict['data'][-2:]
-        print_log('Publishing to %s: %s' % (topic, payload))
-        mqttc.publish(topic, payload=payload, retain=False)
-        found = True
-        break
+        for button in config['buttons']:
+            if data_dict['type'] != button['type']:
+                continue
 
-    if found:
-        continue
+            key = None
+            for tmpkey in ['data', 'state']:
+                if tmpkey in data_dict:
+                    key = tmpkey
+                continue
 
-    for blind in config['blinds']:
-        if data_dict['type'] != 'ER' or data_dict['type'] != blind['type']:
+            if not key:
+                continue
+
+            if 'adr' in data_dict:
+                if '%02d' % int(data_dict['adr'], 16) != button['addr'].lower():
+                    continue
+            elif data_dict[key][0:-2].lower() != button['addr'].lower():
+                continue
+
+            identifier = button['type'] + '_' + button['addr']
+            topic = config['mqtt']['topic'] + '/buttons/' + identifier
+            payload = data_dict[key][-2:]
+            print_log('Publishing to %s: %s' % (topic, payload))
+            mqttc.publish(topic, payload=payload, retain=False)
+            found = True
+            break
+
+        if found:
             continue
 
-        if '%02d' % int(data_dict['data'][0:2], 16) != blind['addr'].lower():
+        for blind in config['blinds']:
+            if data_dict['type'] != 'ER' or data_dict['type'] != blind['type']:
+                continue
+
+            key = None
+            for tmpkey in ['data', 'state']:
+                if tmpkey in data_dict:
+                    key = tmpkey
+                continue
+
+            if not key:
+                continue
+
+            if 'adr' in data_dict:
+                if '%02d' % int(data_dict['adr'], 16) != blind['addr'].lower():
+                    continue
+            elif '%02d' % int(data_dict[key][0:2], 16) != blind['addr'].lower():
+                continue
+
+            identifier = blind['type'] + '_' + blind['addr']
+            topic = config['mqtt']['topic'] + '/blinds/' + identifier + '/state'
+            position_topic = config['mqtt']['topic'] + '/blinds/' + identifier + '/position'
+            state = data_dict[key][-2:].lower()
+            payload = 'unknown'
+            position = None
+            if state in ['01', '0e']:
+                payload = 'open'
+                position = 100
+            elif state in ['02', '0f']:
+                payload = 'closed'
+                position = 0
+            elif state in ['08', '0a']:
+                payload = 'opening'
+            elif state in ['09', '0b']:
+                payload = 'closing'
+            elif state in ['0d', '05']:
+                payload = 'stopped'
+            elif state == '03':
+                # intermediate position stop
+                payload = 'closed'
+                position = 10
+            elif state == '04':
+                # intermediate position up (it seems)
+                payload = 'open'
+                position = 90
+            else:
+                print_log('Received unknown state from %s:%d : %s (state %s)' % (ip,
+                    port, data, state))
+            print_log('Publishing to %s: %s' % (topic, payload))
+            mqttc.publish(topic, payload=payload, retain=True)
+            if position is not None:
+                print_log('Publishing to %s: %s' % (position_topic, position))
+                mqttc.publish(position_topic, payload=position, retain=True)
+
+            found = True
+            break
+
+        if found:
             continue
 
-        identifier = blind['type'] + '_' + blind['addr']
-        topic = config['mqtt']['topic'] + '/blinds/' + identifier + '/state'
-        position_topic = config['mqtt']['topic'] + '/blinds/' + identifier + '/position'
-        state = data_dict['data'][-2:].lower()
-        payload = 'unknown'
-        position = None
-        if state in ['01', '0e']:
-            payload = 'open'
-        elif state in ['02', '0f']:
-            payload = 'closed'
-        elif state in ['08', '0a']:
-            payload = 'opening'
-        elif state in ['09', '0b']:
-            payload = 'closing'
-        elif state in ['0d', '05']:
-            payload = 'stopped'
-        elif state == '03':
-            # intermediate position stop
-            payload = 'closed'
-            position = 10
-        elif state == '04':
-            # intermediate position up (it seems)
-            payload = 'open'
-            position = 90
+        if not got_state:
+            print_log('Received unknown message from %s:%d : %s' % (ip, port,
+                                                                    data_dict))
         else:
-            print_log('Received unknown state from %s:%d : %s (state %s)' % (ip,
-                port, data, state))
-        print_log('Publishing to %s: %s' % (topic, payload))
-        mqttc.publish(topic, payload=payload, retain=True)
-        if position:
-            print_log('Publishing to %s: %s' % (position_topic, position))
-            mqttc.publish(position_topic, payload=position, retain=True)
-
-        found = True
-        break
-
-    if found:
-        continue
-
-    # Ignore what seems to be Infra Red messages for now
-    if data_dict['type'] == 'IR':
-        continue
-
-    print_log('Received unknown message from %s:%d : %s' % (ip, port, data))
+            print_log('Received unknown state: %s' % data_dict)
