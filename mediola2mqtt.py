@@ -6,12 +6,17 @@ import os
 import sys
 import select
 import socket
+import time
 import json
 import yaml
 import requests
 import datetime
 import paho.mqtt.client as mqtt
 
+INTERVAL_REFRESH_AFTER_ACTION = 10
+INTERVAL_BETWEEN_REFRESH = 60
+last_refresh = 0
+last_action = 0
 subscribed = []
 
 def call_mediola(payload, verbose=True):
@@ -62,6 +67,8 @@ def on_disconnect(client, userdata, disconnect_flags, reason_code, properties):
         print_log("Disconnected")
 
 def on_message(client, userdata, message):
+    global last_action
+
     print_log("Sending Message: " + ', '.join([message.topic, str(message.qos), str(message.payload)]))
     # Here we should send a HTTP request to Mediola to open the blind
     dtype, addr = message.topic.split("_")
@@ -112,6 +119,7 @@ def on_message(client, userdata, message):
           "data" : data
         }
         call_mediola(payload)
+        last_action = time.time()
 
 def on_publish(client, userdata, mid, reason_code, properties):
     print_log("Pub: " + str(mid))
@@ -270,9 +278,20 @@ if 'blinds' in config:
         publish_button(blind, sub_identifier='doubledown', sub_name='double down')
 
 while True:
-    readable, _, _ = select.select([sock], [], [], 10)
+    readable, _, _ = select.select([sock], [], [], 1)
     if not readable:
-        # Timeout
+        curtime = time.time()
+        if curtime - last_refresh >= INTERVAL_BETWEEN_REFRESH:
+            print_log('Refreshing after refresh timeout')
+            last_refresh = time.time()
+        elif last_action > 0:
+            if curtime - last_action < INTERVAL_REFRESH_AFTER_ACTION:
+                continue
+            print_log('Refreshing after action')
+            last_action = 0
+        else:
+            continue
+
         data = get_states()
         refresh = True
         ip = port = 'N/A'
