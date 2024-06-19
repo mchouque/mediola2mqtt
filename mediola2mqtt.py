@@ -14,6 +14,7 @@ import datetime
 import paho.mqtt.client as mqtt
 
 INTERVAL_REFRESH_AFTER_ACTION = 10
+AFTER_ACTION_DURATION = 30
 INTERVAL_BETWEEN_REFRESH = 60
 last_refresh = 0
 last_action = 0
@@ -288,7 +289,8 @@ while True:
             if curtime - last_action < INTERVAL_REFRESH_AFTER_ACTION:
                 continue
             print_log('Refreshing after action')
-            last_action = 0
+            if curtime - last_action >= AFTER_ACTION_DURATION:
+                last_action = 0
         else:
             continue
 
